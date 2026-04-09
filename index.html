@@ -740,10 +740,10 @@ let poolFilterOn  = false;
 
 const teams = [
   { name: 'Jeff Brewer',    golfers: ['Scottie Scheffler', 'Collin Morikawa',      'Justin Thomas',     'Patrick Cantlay']  },
-  { name: 'Chase Vargas',   golfers: ['Ludvig Aberg',      'Akshay Bhatia',        'Jake Knapp',        'Harris English']   },
+  { name: 'Chase Vargas',   golfers: ['Ludvig Åberg',      'Akshay Bhatia',        'Jake Knapp',        'Harris English']   },
   { name: 'Justin Johnson', golfers: ['Tommy Fleetwood',   'Viktor Hovland',       'Shane Lowry',       'Sung-Jae Im']      },
   { name: 'Marc Navarro',   golfers: ['Bryson DeChambeau', 'Patrick Reed',         'Russell Henley',    'Max Homa']         },
-  { name: 'Brett Williams', golfers: ['Jon Rahm',          'Chris Gotterup',       'Nicolai Hojgaard',  'JJ Spaun']         },
+  { name: 'Brett Williams', golfers: ['Jon Rahm',          'Chris Gotterup',       'Nicolai Højgaard',  'JJ Spaun']         },
   { name: 'Matt Browning',  golfers: ['Rory McIlroy',      'Jordan Spieth',        'Corey Conners',     'Daniel Berger']    },
   { name: 'Brad Vancho',    golfers: ['Xander Schauffele', 'Min Woo Lee',          'Si Woo Kim',        'Sepp Straka']      },
   { name: "Kevin O'Conner", golfers: ['Justin Rose',       'Brooks Koepka',        'Tyrell Hatton',     'Sam Burns']        },
@@ -753,7 +753,7 @@ const teams = [
 
 function save() {}
 
-function normName(n) { return (n||'').toLowerCase().replace(/[^a-z]/g,''); }
+function normName(n) { return (n||'').toLowerCase().replace(/[åä]/g,'a').replace(/[øö]/g,'o').replace(/ü/g,'u').replace(/é/g,'e').replace(/[^a-z]/g,''); }
 
 function matchGolfer(name) {
   const pn = normName(name);
