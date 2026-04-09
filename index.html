@@ -846,18 +846,17 @@ async function fetchScores() {
     const isFinal   = statusRaw === 'final' || statusRaw === 'complete' || statusRaw === 'completed';
     const PAR       = 72;
 
-    // Log raw structure so browser console can be used for debugging
-    if (players.length) console.log('[MastersPool] raw player[0]:', JSON.stringify(players[0]));
+    // Log raw player[0] for debugging
+    if (players.length) console.log('[MastersPool] player[0]:', JSON.stringify(players[0]));
 
     liveData = players.map(p => {
-      // Raw round strokes → strokes to par. Masters returns e.g. "65" (raw) or "-7" (to-par)
+      // Per-round: Masters returns raw strokes ("67") or to-par ("-5"); detect by magnitude
       const parseRound = v => {
         if (v === undefined || v === null || v === '' || v === '0' || v === 0) return null;
         const s = String(v).trim();
         if (s === 'E' || s === 'Even') return 0;
         const n = parseFloat(s);
         if (isNaN(n)) return null;
-        // Raw strokes (65, 72, etc.) need PAR subtracted; to-par values are small/negative
         return Math.abs(n) > 20 ? n - PAR : n;
       };
       const rounds = [
@@ -867,21 +866,42 @@ async function fetchScores() {
         parseRound(p.r4 ?? p.round4 ?? p.R4 ?? p.Round4),
       ];
 
-      // Total score to par (Masters returns as string: "-11", "E", "+2", or raw int)
-      const totalRaw = p.total ?? p.topar ?? p.score ?? p.Total ?? '';
-      const totalStr = String(totalRaw).trim();
+      const thruStr    = String(p.thru || p.hole || '').trim();
+      const isInRound  = thruStr !== '' && thruStr !== '-' && thruStr !== 'F';
+      const roundsKnown = rounds.filter(r => r !== null).length;
+
+      // Total: Masters returns raw cumulative strokes (>50) during play, or to-par string after
+      const totalRaw = String(p.total ?? p.topar ?? p.score ?? p.Total ?? '').trim();
       let totalPar = null;
-      if (totalStr === 'E' || totalStr === 'Even') {
+      if (totalRaw === 'E' || totalRaw === 'Even') {
         totalPar = 0;
-      } else if (totalStr !== '') {
-        const n = parseFloat(totalStr);
-        if (!isNaN(n)) totalPar = Math.abs(n) > 100 ? n - PAR * 4 : n;
+      } else if (totalRaw !== '') {
+        const n = parseFloat(totalRaw);
+        if (!isNaN(n)) {
+          if (n > 50) {
+            // Raw stroke total. Determine rounds covered:
+            // max realistic Augusta round = 82; ceil(total/82) estimates round count.
+            const MAX_RND = 82;
+            const rds = Math.max(roundsKnown + (isInRound ? 1 : 0), Math.ceil(n / MAX_RND));
+            totalPar = n - PAR * Math.max(1, rds);
+          } else {
+            totalPar = n; // Already to-par format (e.g. "-5", "E", "+2")
+          }
+        }
+      }
+
+      // Derive current round score from total when r1/r2/etc are not yet populated.
+      // Masters only fills per-round fields after a round officially closes.
+      if (totalPar !== null && roundsKnown < 4 && rounds[roundsKnown] === null &&
+          (isInRound || roundsKnown === 0)) {
+        const prevSum = rounds.slice(0, roundsKnown).reduce((s, v) => s + (v || 0), 0);
+        rounds[roundsKnown] = totalPar - prevSum;
       }
 
       const isMC = /^(C|MC|CUT|MDF)$/i.test(p.status || '');
       const isWD = /^(W|WD|DQ)$/i.test(p.status || '');
 
-      // Prefer first+last for reliable full-name matching; display_name may be abbreviated
+      // Prefer first+last over display_name (which may be abbreviated "S. Scheffler")
       const firstLast = (p.first_name || p.first || p.firstName || '').trim() + ' ' +
                         (p.last_name  || p.last  || p.lastName  || '').trim();
       const fullName  = firstLast.trim().length > 2
