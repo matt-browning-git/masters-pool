@@ -774,8 +774,15 @@ function getRoundScore(g, r) {
 
 function getGolferTotal(g) {
   if (!g) return null;
+  if (g.totalPar !== null && g.totalPar !== undefined && !isNaN(g.totalPar)) return g.totalPar;
   const v = g.rounds.filter(r => r !== null);
   return v.length ? v.reduce((a,b) => a+b,0) : null;
+}
+
+function fmtScore(v) {
+  if (v === null || v === undefined) return '—';
+  if (v === 0) return 'E';
+  return v > 0 ? '+' + v : String(v);
 }
 
 function showTab(t, btn) {
@@ -820,8 +827,9 @@ async function fetchScores() {
     liveData = (comp.competitors || []).map(c => {
       const a = c.athlete || {};
       const rounds = [null,null,null,null];
+      const PAR = 72; // Augusta National
       (c.linescores || []).forEach((ls,i) => {
-        if (i < 4) { const v = parseInt(ls.value); if (!isNaN(v)) rounds[i] = v; }
+        if (i < 4) { const v = parseInt(ls.value); if (!isNaN(v) && v > 50) rounds[i] = v - PAR; }
       });
       const totalPar = c.score !== undefined ? parseFloat(c.score) : null;
       const isMC = c.status && c.status.type &&
@@ -886,9 +894,9 @@ function renderStandings() {
         const cls = r
           ? (i===r-1 ? (isCounting?'counting':'dropped') : '')
           : (isCounting ? 'counting' : '');
-        return `<span class="pill ${cls}">${rs}</span>`;
+        return `<span class="pill ${cls}">${fmtScore(rs)}</span>`;
       }).join('');
-      const disp = myScore !== null ? myScore : '—';
+      const disp = fmtScore(myScore);
       const sc   = myScore === null ? '' : '';
       return `<tr class="${isCounting?'counting-row':''}">
         <td class="g-pos">${g.pos||'—'}</td>
@@ -909,7 +917,7 @@ function renderStandings() {
         <span class="team-name">${ts.team.name}</span>
         <div class="team-total-wrap">
           <div class="team-total-label">${r?'Round '+r:' Best 3 of 4'}</div>
-          <div class="team-total-score">${ts.teamScore!==null?ts.teamScore:'—'}</div>
+          <div class="team-total-score">${fmtScore(ts.teamScore)}</div>
         </div>
       </div>
       <table class="golfers-table"><tbody>${gRows}</tbody></table>
@@ -937,7 +945,7 @@ function renderLeaderboard() {
 
   const tRows = rows.map((p,i) => {
     const pm = poolNames.find(pn => normName(pn.name)===normName(p.fullName));
-    const rStr = p.rounds.map(r=>r!==null?r:'—').join(' · ');
+    const rStr = p.rounds.map(r=>fmtScore(r)).join(' · ');
     const tPar = p.mc?'MC':p.totalPar===null?'—':p.totalPar===0?'E':p.totalPar>0?'+'+p.totalPar:''+p.totalPar;
     return `<tr class="${pm?'in-pool':''}">
       <td>${p.pos||'—'}</td>
