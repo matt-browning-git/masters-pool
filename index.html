@@ -738,7 +738,7 @@ let liveData      = [];
 let currentRound  = null;
 let poolFilterOn  = false;
 
-let teams = JSON.parse(localStorage.getItem('degen_masters_teams') || 'null') || [
+const teams = [
   { name: 'Jeff Brewer',    golfers: ['Scottie Scheffler', 'Collin Morikawa',      'Justin Thomas',     'Patrick Cantlay']  },
   { name: 'Chase Vargas',   golfers: ['Ludvig Aberg',      'Akshay Bhatia',        'Jake Knapp',        'Harris English']   },
   { name: 'Justin Johnson', golfers: ['Tommy Fleetwood',   'Viktor Hovland',       'Shane Lowry',       'Sung-Jae Im']      },
@@ -751,7 +751,7 @@ let teams = JSON.parse(localStorage.getItem('degen_masters_teams') || 'null') ||
   { name: 'JD Vancho',      golfers: ['Matthew Fitzpatrick','Hideki Matsuyama',    'Jacob Bridgeman',   'Maverick McNealy'] },
 ];
 
-function save() { localStorage.setItem('degen_masters_teams', JSON.stringify(teams)); }
+function save() {}
 
 function normName(n) { return (n||'').toLowerCase().replace(/[^a-z]/g,''); }
 
