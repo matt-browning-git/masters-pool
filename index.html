@@ -887,6 +887,8 @@ async function fetchScores() {
           } else {
             totalPar = n; // Already to-par format (e.g. "-5", "E", "+2")
           }
+          // Sanity check — discard impossible values (lowest ever Masters total is -18)
+          if (totalPar !== null && (totalPar < -30 || totalPar > 40)) totalPar = null;
         }
       }
 
@@ -1008,11 +1010,19 @@ function renderLeaderboard() {
   const query = (document.getElementById('lb-search').value||'').toLowerCase();
   const poolNames = teams.flatMap(t => t.golfers.map(g => ({ name:g, owner:t.name })));
 
+  const posNum = p => {
+    if (p.mc) return 9000;
+    const s = String(p.pos||'').replace(/^T/i,'').trim();
+    const n = parseInt(s);
+    if (s==='MC'||s==='CUT'||s==='MDF') return 9000;
+    if (s==='WD'||s==='DQ') return 9999;
+    return isNaN(n) ? 8000 : n;
+  };
   let rows = [...liveData].sort((a,b) => {
-    if (a.totalPar===null && b.totalPar===null) return a.fullName.localeCompare(b.fullName);
-    if (a.totalPar===null) return 1;
-    if (b.totalPar===null) return -1;
-    return a.totalPar - b.totalPar;
+    const pa = posNum(a), pb = posNum(b);
+    if (pa !== pb) return pa - pb;
+    if (a.totalPar !== null && b.totalPar !== null) return a.totalPar - b.totalPar;
+    return a.fullName.localeCompare(b.fullName);
   });
   if (query) rows = rows.filter(p => p.fullName.toLowerCase().includes(query));
   const matches = rows.map(p => poolNames.find(pn => normName(pn.name)===normName(p.fullName)));
