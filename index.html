@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Degen Masters Pool 2026</title>
+<title>Degen Masters Pool</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:ital,wght@0,300;0,400;0,500;1,300&display=swap"/>
 <style>
@@ -224,29 +224,46 @@ body {
   gap: 6px;
   margin-bottom: 22px;
   flex-wrap: wrap;
+  background: rgba(10,22,13,0.72);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(126,203,94,0.18);
+  border-radius: 99px;
+  padding: 5px 6px;
+  width: fit-content;
 }
 .round-bar-label {
   font-size: 10px;
   color: var(--faint);
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  margin-right: 4px;
+  margin: 0 6px 0 8px;
 }
 .round-btn {
-  padding: 5px 15px;
+  padding: 8px 20px;
   border-radius: 99px;
-  border: 1px solid var(--border);
+  border: 1px solid transparent;
   background: transparent;
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 400;
+  color: rgba(240,236,228,0.55);
+  font-size: 13px;
+  font-weight: 500;
   cursor: pointer;
   font-family: 'DM Sans', sans-serif;
-  letter-spacing: 0.04em;
-  transition: all 0.15s;
+  letter-spacing: 0.05em;
+  transition: all 0.18s;
 }
-.round-btn:hover { border-color: var(--green-dim); color: var(--green); }
-.round-btn.active { background: var(--green-glow); border-color: var(--green-dim); color: var(--green); }
+.round-btn:hover {
+  background: rgba(126,203,94,0.1);
+  color: var(--white);
+  border-color: rgba(126,203,94,0.25);
+}
+.round-btn.active {
+  background: var(--green-dim);
+  border-color: var(--green-dim);
+  color: #fff;
+  font-weight: 500;
+  box-shadow: 0 0 12px rgba(74,138,53,0.5);
+}
 
 /* ── Team cards ── */
 .team-grid { display: flex; flex-direction: column; gap: 12px; }
@@ -650,19 +667,9 @@ body {
   <div class="header-inner">
     <div class="header-top">
       <div class="logo-area">
-        <div class="logo-emblem"><svg viewBox="0 0 110 88" width="34" height="34" xmlns="http://www.w3.org/2000/svg">
-  <ellipse cx="56" cy="68" rx="48" ry="15" fill="#2a7a38" stroke="#1a5228" stroke-width="2"/>
-  <rect x="14" y="32" width="68" height="30" rx="7" fill="#d4cc00" stroke="#1e5c2b" stroke-width="2.5"/>
-  <rect x="6" y="41" width="16" height="12" rx="4" fill="#d4cc00" stroke="#1e5c2b" stroke-width="2.5"/>
-  <rect x="1" y="42" width="8" height="10" rx="2" fill="#999" stroke="#666" stroke-width="1"/>
-  <rect x="28" y="40" width="30" height="4" rx="2" fill="white" opacity="0.88"/>
-  <rect x="28" y="49" width="30" height="4" rx="2" fill="white" opacity="0.88"/>
-  <circle cx="78" cy="68" r="4" fill="#0a0f0a"/>
-  <line x1="78" y1="16" x2="78" y2="70" stroke="#ccc" stroke-width="1.8"/>
-  <polygon points="78,16 98,25 78,34" fill="#cc1800"/>
-</svg></div>
+        <div class="logo-emblem">⛳</div>
         <div class="logo-text">
-          <h1>Degen <span>Masters</span> Pool 2026</h1>
+          <h1>Degen <span>Masters</span> Pool</h1>
           <p>Augusta National · Live Scoring</p>
         </div>
       </div>
@@ -679,7 +686,6 @@ body {
       <button class="nav-tab active" onclick="showTab('standings',this)">Standings</button>
       <button class="nav-tab" onclick="showTab('leaderboard',this)">Leaderboard</button>
       <button class="nav-tab" onclick="showTab('payouts',this)">Payouts</button>
-      <button class="nav-tab" onclick="showTab('setup',this)">Setup</button>
     </nav>
   </div>
 </header>
@@ -719,18 +725,9 @@ body {
     </div>
   </div>
 
-  <!-- Setup -->
-  <div id="tab-setup" class="section">
-    <div class="setup-grid" id="teams-setup"></div>
-    <div class="action-bar">
-      <button class="btn btn-primary" onclick="addTeam()">+ Add Team</button>
-      <button class="btn btn-secondary" onclick="saveAndRefresh()">Save &amp; Refresh</button>
-    </div>
-    <p class="setup-note">Golfer names must match ESPN exactly (e.g. "Scottie Scheffler"). Check the Leaderboard tab to confirm spellings. Your setup saves locally in the browser.</p>
-    <p class="setup-msg" id="setup-msg"></p>
-  </div>
 
 </main>
+
 
 <script>
 const ESPN_URL = 'https://site.api.espn.com/apis/site/v2/sports/golf/pga/scoreboard';
@@ -740,14 +737,18 @@ let liveData      = [];
 let currentRound  = null;
 let poolFilterOn  = false;
 
-let teams = JSON.parse(localStorage.getItem('degen_masters_teams') || 'null') || [
-  { name: 'Player 1', golfers: ['Scottie Scheffler','Tommy Fleetwood','Russell Henley','Shane Lowry'] },
-  { name: 'Player 2', golfers: ['Rory McIlroy','Patrick Cantlay','Cameron Smith','Sepp Straka'] },
-  { name: 'Player 3', golfers: ['Bryson DeChambeau','Viktor Hovland','Min Woo Lee','Jason Day'] },
-  { name: 'Player 4', golfers: ['Collin Morikawa','Xander Schauffele','Hideki Matsuyama','Dustin Johnson'] },
+let teams = [
+  { name: 'Jeff Brewer',   golfers: ['Scottie Scheffler','Collin Morikawa','Justin Thomas','Patrick Cantlay'] },
+  { name: 'Chase Vargas',  golfers: ['Ludvig Åberg','Akshay Bhatia','Jake Knapp','Harris English'] },
+  { name: 'Justin Johnson',golfers: ['Tommy Fleetwood','Viktor Hovland','Shane Lowry','Sungjae Im'] },
+  { name: 'Marc Navarro',  golfers: ['Bryson DeChambeau','Patrick Reed','Russell Henley','Max Homa'] },
+  { name: 'Brett Williams',golfers: ['Jon Rahm','Chris Gotterup','Nicolai Højgaard','J.J. Spaun'] },
+  { name: 'Matt Browning', golfers: ['Rory McIlroy','Jordan Spieth','Corey Conners','Daniel Berger'] },
+  { name: 'Brad Vancho',   golfers: ['Xander Schauffele','Min Woo Lee','Si Woo Kim','Sepp Straka'] },
+  { name: "Kevin O'Connor",golfers: ['Justin Rose','Brooks Koepka','Tyrrell Hatton','Sam Burns'] },
+  { name: 'Ryan Maxwell',  golfers: ['Cameron Young','Robert MacIntyre','Adam Scott','Jason Day'] },
+  { name: 'JD Vancho',     golfers: ['Matt Fitzpatrick','Hideki Matsuyama','Jacob Bridgeman','Maverick McNealy'] },
 ];
-
-function save() { localStorage.setItem('degen_masters_teams', JSON.stringify(teams)); }
 
 function normName(n) { return (n||'').toLowerCase().replace(/[^a-z]/g,''); }
 
@@ -779,7 +780,6 @@ function showTab(t, btn) {
   document.getElementById('tab-'+t).classList.add('active');
   document.querySelectorAll('.nav-tab').forEach(b => b.classList.remove('active'));
   if (btn) btn.classList.add('active');
-  if (t === 'setup')      renderSetup();
   if (t === 'payouts')    renderPayouts();
   if (t === 'leaderboard') renderLeaderboard();
 }
@@ -996,50 +996,6 @@ function renderPayouts() {
   </div>`;
 
   el.innerHTML = roundCards + finalCard;
-}
-
-function renderSetup() {
-  document.getElementById('teams-setup').innerHTML = teams.map((t,i) => `
-    <div class="setup-card">
-      <div class="setup-card-header">
-        <span class="setup-team-label">Team ${i+1}</span>
-        <button class="remove-btn" onclick="removeTeam(${i})">Remove</button>
-      </div>
-      <div class="field-row">
-        <label>Participant Name</label>
-        <input value="${t.name}" placeholder="Name" oninput="teams[${i}].name=this.value;save();" />
-      </div>
-      <div class="golfer-fields">
-        ${t.golfers.map((g,j)=>`
-          <div class="field-row">
-            <label>Pick ${j+1}</label>
-            <input value="${g}" placeholder="Golfer name" oninput="teams[${i}].golfers[${j}]=this.value;save();" />
-          </div>`).join('')}
-      </div>
-    </div>`).join('');
-}
-
-function addTeam() {
-  teams.push({ name:'New Player', golfers:['','','',''] });
-  save();
-  renderSetup();
-}
-
-function removeTeam(i) {
-  if (!confirm(`Remove ${teams[i].name}?`)) return;
-  teams.splice(i,1);
-  save();
-  renderSetup();
-}
-
-function saveAndRefresh() {
-  save();
-  const msg = document.getElementById('setup-msg');
-  msg.textContent = 'Saving...';
-  fetchScores().then(() => {
-    msg.textContent = '✓ Saved and scores refreshed.';
-    setTimeout(() => msg.textContent='', 4000);
-  });
 }
 
 fetchScores();
