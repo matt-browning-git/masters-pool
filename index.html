@@ -731,8 +731,8 @@ body {
 </main>
 
 <script>
-const ESPN_URL = 'https://site.api.espn.com/apis/site/v2/sports/golf/pga/scoreboard';
-const PROXY    = 'https://api.allorigins.win/get?url=';
+const MASTERS_URL = 'https://www.masters.com/en_US/scores/feeds/2026/scores.json';
+const PROXY       = 'https://api.allorigins.win/get?url=';
 
 let liveData      = [];
 let currentRound  = null;
@@ -814,32 +814,58 @@ async function fetchScores() {
   pill.className = 'status-pill loading';
   txt.textContent = 'Loading';
   try {
-    const res  = await fetch(PROXY + encodeURIComponent(ESPN_URL), { cache: 'no-cache' });
-    const json = await res.json();
-    const data = JSON.parse(json.contents);
-    const event = data.events && data.events[0];
-    if (!event) throw new Error('No event');
-    const comp       = event.competitions[0];
-    const statusName = event.status && event.status.type && event.status.type.name;
-    const isLive     = statusName === 'STATUS_IN_PROGRESS';
-    const isFinal    = statusName === 'STATUS_FINAL';
+    // Try Masters.com directly (works if they allow CORS), else use proxy
+    let data;
+    try {
+      const res = await fetch(MASTERS_URL, { cache: 'no-cache' });
+      if (!res.ok) throw new Error('direct');
+      data = await res.json();
+    } catch(e) {
+      const res = await fetch(PROXY + encodeURIComponent(MASTERS_URL), { cache: 'no-cache' });
+      const json = await res.json();
+      data = JSON.parse(json.contents);
+    }
 
-    liveData = (comp.competitors || []).map(c => {
-      const a = c.athlete || {};
-      const rounds = [null,null,null,null];
-      const PAR = 72; // Augusta National
-      (c.linescores || []).forEach((ls,i) => {
-        if (i < 4) { const v = parseInt(ls.value); if (!isNaN(v) && v > 50) rounds[i] = v - PAR; }
-      });
-      const totalPar = c.score !== undefined ? parseFloat(c.score) : null;
-      const isMC = c.status && c.status.type &&
-        (c.status.type.name === 'STATUS_CUT' || c.status.type.name === 'STATUS_MISSED_CUT');
+    const players   = data.data?.player || data.Players || data.players || [];
+    const statusRaw = (data.data?.statusType || data.statusType || '').toLowerCase();
+    const isLive    = statusRaw === 'live' || statusRaw === 'inprogress' || statusRaw === 'in_progress';
+    const isFinal   = statusRaw === 'final' || statusRaw === 'complete' || statusRaw === 'completed';
+    const PAR       = 72;
+
+    liveData = players.map(p => {
+      // Raw round strokes → strokes to par
+      const parseRound = v => {
+        const n = parseInt(v || 0);
+        return n > 50 ? n - PAR : (n !== 0 ? n : null);
+      };
+      const rounds = [
+        parseRound(p.r1 || p.round1),
+        parseRound(p.r2 || p.round2),
+        parseRound(p.r3 || p.round3),
+        parseRound(p.r4 || p.round4),
+      ];
+
+      // Total score to par (Masters returns as string: "-11", "E", "+2")
+      const totalStr = String(p.total ?? p.score ?? '');
+      const totalPar = totalStr === 'E' || totalStr === 'Even' ? 0
+                     : totalStr === '' ? null
+                     : parseFloat(totalStr);
+
+      const isMC = /^(C|MC|CUT|MDF)$/i.test(p.status || '');
+      const isWD = /^(W|WD|DQ)$/i.test(p.status || '');
+
+      // Full name: Masters uses first/last or display
+      const fullName = p.display_name
+        || (p.first && p.last ? p.first + ' ' + p.last : '')
+        || p.display || p.name || '';
+
       return {
-        fullName: a.displayName || '',
-        pos:  isMC ? 'MC' : (c.status && c.status.position ? c.status.position.displayName : ''),
+        fullName,
+        pos:      isMC ? 'MC' : isWD ? 'WD' : String(p.pos || p.posNum || '—'),
         rounds,
         totalPar: isNaN(totalPar) ? null : totalPar,
-        mc: isMC,
+        mc:       isMC || isWD,
+        thru:     p.thru || p.hole || '-',
       };
     });
 
