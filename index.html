@@ -757,7 +757,21 @@ function normName(n) { return (n||'').toLowerCase().replace(/[^a-z]/g,''); }
 
 function matchGolfer(name) {
   const pn = normName(name);
-  return liveData.find(p => normName(p.fullName) === pn);
+  // 1. Exact normalized full-name match
+  let m = liveData.find(p => normName(p.fullName) === pn);
+  if (m) return m;
+  // 2. Last-name + first-initial match (handles "S. Scheffler" vs "Scottie Scheffler")
+  const parts = name.trim().split(/\s+/);
+  if (parts.length >= 2) {
+    const first0 = parts[0][0].toLowerCase();
+    const last   = normName(parts[parts.length - 1]);
+    m = liveData.find(p => {
+      const pl = normName(p.lastName || '');
+      const pf = (p.firstName || p.fullName.split(' ')[0] || '')[0]?.toLowerCase();
+      return pl === last && pf === first0;
+    });
+  }
+  return m || null;
 }
 
 function best3of4(scores) {
@@ -832,38 +846,55 @@ async function fetchScores() {
     const isFinal   = statusRaw === 'final' || statusRaw === 'complete' || statusRaw === 'completed';
     const PAR       = 72;
 
+    // Log raw structure so browser console can be used for debugging
+    if (players.length) console.log('[MastersPool] raw player[0]:', JSON.stringify(players[0]));
+
     liveData = players.map(p => {
-      // Raw round strokes → strokes to par
+      // Raw round strokes → strokes to par. Masters returns e.g. "65" (raw) or "-7" (to-par)
       const parseRound = v => {
-        const n = parseInt(v || 0);
-        return n > 50 ? n - PAR : (n !== 0 ? n : null);
+        if (v === undefined || v === null || v === '' || v === '0' || v === 0) return null;
+        const s = String(v).trim();
+        if (s === 'E' || s === 'Even') return 0;
+        const n = parseFloat(s);
+        if (isNaN(n)) return null;
+        // Raw strokes (65, 72, etc.) need PAR subtracted; to-par values are small/negative
+        return Math.abs(n) > 20 ? n - PAR : n;
       };
       const rounds = [
-        parseRound(p.r1 || p.round1),
-        parseRound(p.r2 || p.round2),
-        parseRound(p.r3 || p.round3),
-        parseRound(p.r4 || p.round4),
+        parseRound(p.r1 ?? p.round1 ?? p.R1 ?? p.Round1),
+        parseRound(p.r2 ?? p.round2 ?? p.R2 ?? p.Round2),
+        parseRound(p.r3 ?? p.round3 ?? p.R3 ?? p.Round3),
+        parseRound(p.r4 ?? p.round4 ?? p.R4 ?? p.Round4),
       ];
 
-      // Total score to par (Masters returns as string: "-11", "E", "+2")
-      const totalStr = String(p.total ?? p.score ?? '');
-      const totalPar = totalStr === 'E' || totalStr === 'Even' ? 0
-                     : totalStr === '' ? null
-                     : parseFloat(totalStr);
+      // Total score to par (Masters returns as string: "-11", "E", "+2", or raw int)
+      const totalRaw = p.total ?? p.topar ?? p.score ?? p.Total ?? '';
+      const totalStr = String(totalRaw).trim();
+      let totalPar = null;
+      if (totalStr === 'E' || totalStr === 'Even') {
+        totalPar = 0;
+      } else if (totalStr !== '') {
+        const n = parseFloat(totalStr);
+        if (!isNaN(n)) totalPar = Math.abs(n) > 100 ? n - PAR * 4 : n;
+      }
 
       const isMC = /^(C|MC|CUT|MDF)$/i.test(p.status || '');
       const isWD = /^(W|WD|DQ)$/i.test(p.status || '');
 
-      // Full name: Masters uses first/last or display
-      const fullName = p.display_name
-        || (p.first && p.last ? p.first + ' ' + p.last : '')
-        || p.display || p.name || '';
+      // Prefer first+last for reliable full-name matching; display_name may be abbreviated
+      const firstLast = (p.first_name || p.first || p.firstName || '').trim() + ' ' +
+                        (p.last_name  || p.last  || p.lastName  || '').trim();
+      const fullName  = firstLast.trim().length > 2
+        ? firstLast.trim()
+        : (p.display_name || p.display || p.name || '').trim();
 
       return {
         fullName,
-        pos:      isMC ? 'MC' : isWD ? 'WD' : String(p.pos || p.posNum || '—'),
+        firstName: (p.first_name || p.first || p.firstName || '').trim(),
+        lastName:  (p.last_name  || p.last  || p.lastName  || '').trim(),
+        pos:      isMC ? 'MC' : isWD ? 'WD' : String(p.pos || p.posNum || p.position || '—'),
         rounds,
-        totalPar: isNaN(totalPar) ? null : totalPar,
+        totalPar,
         mc:       isMC || isWD,
         thru:     p.thru || p.hole || '-',
       };
