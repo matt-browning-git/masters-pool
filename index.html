@@ -865,6 +865,16 @@ async function fetchScores() {
         parseRound(p.r3 ?? p.round3 ?? p.R3 ?? p.Round3),
         parseRound(p.r4 ?? p.round4 ?? p.R4 ?? p.Round4),
       ];
+      // Also try array-based formats: p.rounds[] or p.linescore[]
+      const roundsArr = Array.isArray(p.rounds) ? p.rounds
+                      : Array.isArray(p.linescore) ? p.linescore : null;
+      if (roundsArr) {
+        roundsArr.forEach((item, i) => {
+          if (i < 4 && rounds[i] === null) {
+            rounds[i] = parseRound(item?.score ?? item?.strokes ?? item?.value ?? item);
+          }
+        });
+      }
 
       const thruStr    = String(p.thru || p.hole || '').trim();
       const isInRound  = thruStr !== '' && thruStr !== '-' && thruStr !== 'F';
@@ -894,12 +904,13 @@ async function fetchScores() {
 
       // Derive current round score from total when per-round data is not yet populated.
       // Masters only fills r1/r2/etc after a round officially closes, which may lag.
-      // Use ceil(rawTotal / 82) to estimate how many rounds the total covers — if that
-      // exceeds roundsKnown, there's an unrecorded round to fill in.
+      // expectedRounds = how many rounds the cumulative raw total covers.
+      // Only derive when exactly one round is unaccounted for (expectedRounds === roundsKnown + 1),
+      // so we don't assign a 2-round total to the R1 slot.
       const rawN = parseFloat(totalRaw);
       const expectedRounds = (!isNaN(rawN) && rawN > 50) ? Math.ceil(rawN / 82) : null;
       if (totalPar !== null && roundsKnown < 4 && rounds[roundsKnown] === null &&
-          (isInRound || roundsKnown === 0 || (expectedRounds !== null && roundsKnown < expectedRounds))) {
+          (isInRound || (expectedRounds !== null && expectedRounds === roundsKnown + 1))) {
         const prevSum = rounds.slice(0, roundsKnown).reduce((s, v) => s + (v || 0), 0);
         rounds[roundsKnown] = totalPar - prevSum;
       }
