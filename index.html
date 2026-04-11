@@ -731,7 +731,7 @@ body {
 </main>
 
 <script>
-const MASTERS_URL = 'https://www.masters.com/en_US/scores/feeds/2026/scores.json';
+const ESPN_URL = 'https://site.api.espn.com/apis/site/v2/sports/golf/pga/scoreboard';
 const PROXY       = 'https://api.allorigins.win/get?url=';
 
 let liveData      = [];
@@ -828,112 +828,74 @@ async function fetchScores() {
   pill.className = 'status-pill loading';
   txt.textContent = 'Loading';
   try {
-    // Try Masters.com directly (works if they allow CORS), else use proxy
     let data;
     try {
-      const res = await fetch(MASTERS_URL, { cache: 'no-cache' });
+      const res = await fetch(ESPN_URL, { cache: 'no-cache' });
       if (!res.ok) throw new Error('direct');
       data = await res.json();
     } catch(e) {
-      const res = await fetch(PROXY + encodeURIComponent(MASTERS_URL), { cache: 'no-cache' });
+      const res = await fetch(PROXY + encodeURIComponent(ESPN_URL), { cache: 'no-cache' });
       const json = await res.json();
       data = JSON.parse(json.contents);
     }
 
-    const players   = data.data?.player || data.Players || data.players || [];
-    const statusRaw = (data.data?.statusType || data.statusType || '').toLowerCase();
-    const isLive    = statusRaw === 'live' || statusRaw === 'inprogress' || statusRaw === 'in_progress';
-    const isFinal   = statusRaw === 'final' || statusRaw === 'complete' || statusRaw === 'completed';
-    const PAR       = 72;
+    // Find the Masters event (ESPN lists multiple events; pick by name)
+    const events   = data.events || [];
+    const event    = events.find(e => /master/i.test(e.name || '')) || events[0];
+    if (!event) throw new Error('No event');
 
-    // Log raw player[0] for debugging
-    if (players.length) console.log('[MastersPool] player[0]:', JSON.stringify(players[0]));
+    const competition = event.competitions?.[0] || {};
+    const competitors = competition.competitors || [];
+    const compStatus  = competition.status?.type?.name || '';
+    const isLive  = /IN_PROGRESS|ACTIVE/i.test(compStatus);
+    const isFinal = /FINAL|COMPLETE/i.test(compStatus);
+    const PAR = 72;
 
-    liveData = players.map(p => {
-      // Per-round: Masters returns raw strokes ("67") or to-par ("-5"); detect by magnitude
-      const parseRound = v => {
-        if (v === undefined || v === null || v === '' || v === '0' || v === 0) return null;
-        const s = String(v).trim();
-        if (s === 'E' || s === 'Even') return 0;
-        const n = parseFloat(s);
-        if (isNaN(n)) return null;
-        return Math.abs(n) > 20 ? n - PAR : n;
-      };
-      const rounds = [
-        parseRound(p.r1 ?? p.round1 ?? p.R1 ?? p.Round1),
-        parseRound(p.r2 ?? p.round2 ?? p.R2 ?? p.Round2),
-        parseRound(p.r3 ?? p.round3 ?? p.R3 ?? p.Round3),
-        parseRound(p.r4 ?? p.round4 ?? p.R4 ?? p.Round4),
-      ];
-      // Also try array-based formats: p.rounds[] or p.linescore[]
-      const roundsArr = Array.isArray(p.rounds) ? p.rounds
-                      : Array.isArray(p.linescore) ? p.linescore : null;
-      if (roundsArr) {
-        roundsArr.forEach((item, i) => {
-          if (i < 4 && rounds[i] === null) {
-            rounds[i] = parseRound(item?.score ?? item?.strokes ?? item?.value ?? item);
-          }
-        });
-      }
+    if (competitors.length) console.log('[Pool] ESPN event:', event.name,
+      '| players:', competitors.length,
+      '| sample:', JSON.stringify(competitors[0]).slice(0, 300));
 
-      const thruStr    = String(p.thru || p.hole || '').trim();
-      const isInRound  = thruStr !== '' && thruStr !== '-' && thruStr !== 'F';
-      const roundsKnown = rounds.filter(r => r !== null).length;
+    liveData = competitors.map(c => {
+      const athlete    = c.athlete || {};
+      const fullName   = athlete.displayName || athlete.fullName || '';
+      const statusType = c.status?.type?.name || '';
+      const detail     = c.status?.type?.shortDetail || '';
 
-      // Total: Masters returns raw cumulative strokes (>50) during play, or to-par string after
-      const totalRaw = String(p.total ?? p.topar ?? p.score ?? p.Total ?? '').trim();
+      const isMC = statusType === 'STATUS_MISSED_CUT' || /\bMC\b|cut/i.test(detail);
+      const isWD = /WITHDRAWN|DISQUALIFIED/i.test(statusType);
+
+      // Total: ESPN returns to-par directly ("-5", "E", "+2")
+      const scoreStr = String(c.score ?? '').trim();
       let totalPar = null;
-      if (totalRaw === 'E' || totalRaw === 'Even') {
+      if (scoreStr === 'E' || scoreStr === 'Even' || scoreStr === '0') {
         totalPar = 0;
-      } else if (totalRaw !== '') {
-        const n = parseFloat(totalRaw);
-        if (!isNaN(n)) {
-          if (n > 50) {
-            // Raw stroke total. Determine rounds covered:
-            // max realistic Augusta round = 82; ceil(total/82) estimates round count.
-            const MAX_RND = 82;
-            const rds = Math.max(roundsKnown + (isInRound ? 1 : 0), Math.ceil(n / MAX_RND));
-            totalPar = n - PAR * Math.max(1, rds);
-          } else {
-            totalPar = n; // Already to-par format (e.g. "-5", "E", "+2")
-          }
-          // Sanity check — discard impossible values (lowest ever Masters total is -18)
-          if (totalPar !== null && (totalPar < -30 || totalPar > 40)) totalPar = null;
+      } else if (scoreStr !== '') {
+        const n = parseFloat(scoreStr);
+        if (!isNaN(n)) totalPar = n;
+      }
+
+      // Per-round: linescores hold raw strokes — subtract PAR to get to-par
+      const linescores = c.linescores || [];
+      const rounds = [null, null, null, null];
+      linescores.forEach((ls, i) => {
+        if (i < 4) {
+          const v = typeof ls.value === 'number' ? ls.value : parseFloat(ls.displayValue);
+          if (!isNaN(v) && v > 0) rounds[i] = v - PAR;
         }
-      }
+      });
 
-      // Derive current round score from total when per-round data is not yet populated.
-      // Masters only fills r1/r2/etc after a round officially closes, which may lag.
-      // expectedRounds = how many rounds the cumulative raw total covers.
-      // Only derive when exactly one round is unaccounted for (expectedRounds === roundsKnown + 1),
-      // so we don't assign a 2-round total to the R1 slot.
-      const rawN = parseFloat(totalRaw);
-      const expectedRounds = (!isNaN(rawN) && rawN > 50) ? Math.ceil(rawN / 82) : null;
-      if (totalPar !== null && roundsKnown < 4 && rounds[roundsKnown] === null &&
-          (isInRound || (expectedRounds !== null && expectedRounds === roundsKnown + 1))) {
-        const prevSum = rounds.slice(0, roundsKnown).reduce((s, v) => s + (v || 0), 0);
-        rounds[roundsKnown] = totalPar - prevSum;
-      }
-
-      const isMC = /^(C|MC|CUT|MDF)$/i.test(p.status || '');
-      const isWD = /^(W|WD|DQ)$/i.test(p.status || '');
-
-      // Prefer first+last over display_name (which may be abbreviated "S. Scheffler")
-      const firstLast = (p.first_name || p.first || p.firstName || '').trim() + ' ' +
-                        (p.last_name  || p.last  || p.lastName  || '').trim();
-      const fullName  = firstLast.trim().length > 2
-        ? firstLast.trim()
-        : (p.display_name || p.display || p.name || '').trim();
+      const pos = isMC ? 'MC' : isWD ? 'WD'
+                : (c.status?.position?.displayName || '—');
 
       return {
         fullName,
-        firstName: (p.first_name || p.first || p.firstName || '').trim(),
-        lastName:  (p.last_name  || p.last  || p.lastName  || '').trim(),
-        pos:      isMC ? 'MC' : isWD ? 'WD' : String(p.pos || p.posNum || p.position || '—'),
+        firstName: fullName.split(' ')[0] || '',
+        lastName:  fullName.split(' ').slice(1).join(' ') || '',
+        pos,
         rounds,
         totalPar,
-        mc:       isMC || isWD,
-        thru:     p.thru || p.hole || '-',
+        mc:   isMC || isWD,
+        thru: detail,
       };
     });
 
@@ -945,11 +907,11 @@ async function fetchScores() {
     renderLeaderboard();
     renderPayouts();
   } catch(e) {
+    console.error('[Pool] fetchScores error:', e);
     pill.className  = 'status-pill offline';
     txt.textContent = 'Offline';
   }
 }
-
 function renderStandings() {
   const r = currentRound;
   const teamScores = teams.map(team => {
