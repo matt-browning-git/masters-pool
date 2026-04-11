@@ -892,10 +892,14 @@ async function fetchScores() {
         }
       }
 
-      // Derive current round score from total when r1/r2/etc are not yet populated.
-      // Masters only fills per-round fields after a round officially closes.
+      // Derive current round score from total when per-round data is not yet populated.
+      // Masters only fills r1/r2/etc after a round officially closes, which may lag.
+      // Use ceil(rawTotal / 82) to estimate how many rounds the total covers — if that
+      // exceeds roundsKnown, there's an unrecorded round to fill in.
+      const rawN = parseFloat(totalRaw);
+      const expectedRounds = (!isNaN(rawN) && rawN > 50) ? Math.ceil(rawN / 82) : null;
       if (totalPar !== null && roundsKnown < 4 && rounds[roundsKnown] === null &&
-          (isInRound || roundsKnown === 0)) {
+          (isInRound || roundsKnown === 0 || (expectedRounds !== null && roundsKnown < expectedRounds))) {
         const prevSum = rounds.slice(0, roundsKnown).reduce((s, v) => s + (v || 0), 0);
         rounds[roundsKnown] = totalPar - prevSum;
       }
